@@ -1,27 +1,26 @@
-// lib/mongodb.js
-import { MongoClient } from 'mongodb';
+import mongoose from "mongoose";
 
-const uri = process.env.MONGODB_URI;
-const options = {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-};
+const MONGODB_URI = process.env.MONGODB_URI;
 
-let client;
-let clientPromise;
-
-// Check if we're in development or production
-if (process.env.NODE_ENV === 'development') {
-  // In development mode, use a global variable
-  if (!global._mongoClientPromise) {
-    client = new MongoClient(uri, options);
-    global._mongoClientPromise = client.connect();
-  }
-  clientPromise = global._mongoClientPromise;
-} else {
-  // In production mode, create a new client for each request
-  client = new MongoClient(uri, options);
-  clientPromise = client.connect();
+if (!MONGODB_URI) {
+    throw new Error("Please define the MONGODB_URI environment variable inside .env.local");
 }
 
-export default clientPromise;
+let cached = global.mongoose || { conn: null, promise: null };
+
+async function dbConnect() {
+    if (cached.conn) return cached.conn;
+
+    if (!cached.promise) {
+        cached.promise = mongoose.connect(MONGODB_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+        }).then((mongoose) => mongoose);
+    }
+
+    cached.conn = await cached.promise;
+    return cached.conn;
+}
+
+global.mongoose = cached;
+export default dbConnect;

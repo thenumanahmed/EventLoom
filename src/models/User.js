@@ -1,36 +1,46 @@
-// src/models/User.js
-import clientPromise from '@/lib/mongodb';
-import bcrypt from 'bcrypt';
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 
-class User {
-  constructor(username, password) {
-    this.username = username;
-    this.password = password;
+const UserSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+    },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+    password: {
+      type: String,
+      required: true,
+    },
+  },
+  { timestamps: true }
+);
+
+// Pre-save hook to hash the password before saving the user
+UserSchema.pre('save', async function (next) {
+  if (!this.isModified('password')) {
+    return next();
   }
 
-  static async findByUsername(username) {
-    const client = await clientPromise;
-    const db = client.db(process.env.MONGODB_DB);
-    const usersCollection = db.collection('users');
-    
-    return await usersCollection.findOne({ username });
+  try {
+    // Generate salt and hash the password
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (error) {
+    next(error);
   }
+});
 
-  static async create(username, password) {
-    const client = await clientPromise;
-    const db = client.db(process.env.MONGODB_DB);
-    const usersCollection = db.collection('users');
+// Compare input password with hashed password in the database
+UserSchema.methods.matchPassword = async function (password) {
+  return await bcrypt.compare(password, this.password);
+};
 
-    const existingUser = await User.findByUsername(username);
-    if (existingUser) {
-      throw new Error('Username already taken');
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const result = await usersCollection.insertOne({ username, password: hashedPassword });
-
-    return { id: result.insertedId, username };
-  }
-}
+const User = mongoose.models.User || mongoose.model("User", UserSchema);
 
 export default User;
