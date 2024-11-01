@@ -1,45 +1,42 @@
-import Event from '@/models/Event';
-import { NextResponse } from 'next/server';
-import { ObjectId } from 'mongodb';
+import { NextResponse } from "next/server";
+import connectDB from "@/lib/mongodb";
+import Event from "@/models/Event";
+import { getUserFromToken } from "@/lib/auth";
 
-export async function GET(request, { params }) {
-  if (!ObjectId.isValid(params.id)) {
-    return NextResponse.json({ message: 'Invalid event ID' }, { status: 400 }); // Bad Request
+export async function PUT(req, { params }) {
+  await connectDB();
+  try {
+    const user = await getUserFromToken(req);
+    if (!user) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
+    const event = await Event.findById(params.id);
+    if (!event) return NextResponse.json({ message: "Event not found" }, { status: 404 });
+
+    if (event.createdBy.toString() !== user._id.toString())
+      return NextResponse.json({ message: "Not authorized" }, { status: 403 });
+
+    const updatedEvent = await Event.findByIdAndUpdate(params.id, await req.json(), { new: true });
+    return NextResponse.json(updatedEvent, { status: 200 });
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
-
-  const event = await Event.findById(params.id);
-  if (!event) {
-    return NextResponse.json({ message: 'Event not found' }, { status: 404 }); // Not Found
-  }
-  return NextResponse.json(event, { status: 200 }); // OK
-}
-export async function PUT(request, { params }) {
-  if (!ObjectId.isValid(params.id)) {
-    return NextResponse.json({ message: 'Invalid event ID' }, { status: 400 }); // Bad Request
-  }
-
-  const eventData = await request.json();
-
-  // Optional: Validate eventData structure here
-
-  const updatedEvent = await Event.update(params.id, eventData);
-  if (!updatedEvent) {
-    return NextResponse.json({ message: 'Event not found for update' }, { status: 404 }); // Not Found
-  }
-  return NextResponse.json(updatedEvent, { status: 200 }); // OK
-}
-export async function DELETE(request, { params }) {
-  // Validate params and ID
-  if (!params || !params.id || !ObjectId.isValid(params.id)) {
-    return NextResponse.json({ message: 'Invalid event ID' }, { status: 400 }); // Bad Request
-  }
-
-  const result = await Event.delete(params.id);
-  if (result.deletedCount === 0) {
-    return NextResponse.json({ message: 'Event not found for deletion' }, { status: 404 }); // Not Found
-  }
-
-  // Return 204 No Content without a body
-  return NextResponse.json({ message: 'deleted successfully'}, { status: 204 }); // Correct usage for No Content
 }
 
+export async function DELETE(req, { params }) {
+  await connectDB();
+  try {
+    const user = await getUserFromToken(req);
+    if (!user) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
+    const event = await Event.findById(params.id);
+    if (!event) return NextResponse.json({ message: "Event not found" }, { status: 404 });
+
+    if (event.createdBy.toString() !== user._id.toString())
+      return NextResponse.json({ message: "Not authorized" }, { status: 403 });
+
+    await Event.deleteOne({ _id: params.id });
+    return NextResponse.json({ message: "Event deleted successfully" }, { status: 200 });
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
